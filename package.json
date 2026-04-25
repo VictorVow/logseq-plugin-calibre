@@ -1,5 +1,5 @@
 {
-  "name": "logseq-calibre-annotation",
+  "name": "victor-logseq-calibre-annotation",
   "version": "1.5.3",
   "description": "View ebooks from Calibre and sync annotations",
   "main": "dist/index.html",
@@ -33,8 +33,8 @@
     "vite": "^2.7.2"
   },
   "logseq": {
-    "id": "logseq-calibre-annotation",
-    "title": "calibreAnnotation",
+    "id": "victor-logseq-calibre-annotation",
+    "title": "victor-calibreAnnotation",
     "icon": "./icon.jpg"
   }
 }

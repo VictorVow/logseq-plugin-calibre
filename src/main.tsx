@@ -110,7 +110,7 @@ const settings: SettingSchemaDesc[] = [
 ];
 
 async function main() {
-  console.log("=== logseq-calibre-annotation Plugin Loaded ===");
+  console.log("=== victor-logseq-calibre-annotation Plugin Loaded ===");
 
   logseq.App.getUserConfigs().then(configs => {
       (configs.preferredThemeMode == "dark") ? document.body.className = ".dark-theme" : document.body.className = ".light-theme";
@@ -147,7 +147,7 @@ async function main() {
 
     logseq.provideStyle({
       style: `
-        #logseq-calibre-annotation_lsp_main {
+        #victor-logseq-calibre-annotation_lsp_main {
           position: fixed ;
           top: 3rem ;
           left: ${100 - logseq.settings?.viewerWidth}% ;
@@ -227,7 +227,7 @@ async function main() {
         
         logseq.provideStyle({
           style: `
-          #logseq-calibre-annotation_lsp_main {
+          #victor-logseq-calibre-annotation_lsp_main {
             position: fixed ;
             top: 3rem ;
             left: ${100 - logseq.settings?.viewerWidth}% ;
