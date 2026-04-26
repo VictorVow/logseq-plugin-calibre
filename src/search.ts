@@ -345,13 +345,13 @@ async function create(page_title, page_properties, calibre_item) {
             await setBlockProperties(newBlock.uuid, page_properties);
         }
 
+        // Insert Synopsis first, then the calibre link/renderers block after it
         const synopsisBlock = await logseq.Editor.insertBlock(newBlock.uuid, "[[Synopsis]]");
 
         await logseq.Editor.insertBlock(synopsisBlock.uuid, calibre_item?.comments? calibre_item?.comments : "");
 
         const calibreLibrary = logseq.settings?.calibreLibrary.replace(/ /g, '_');
-        // Append two MacroRenderers for View and Sync in calibre-annotation Plugin
-        await logseq.Editor.insertBlock(newBlock.uuid, `[${calibre_item.title}](calibre://show-book/${calibreLibrary}/${calibre_item.application_id})  {{renderer calibreViewer, special, /#book_id=${calibre_item.application_id}&fmt=${logseq.settings?.bookFormat}&library_id=${calibreLibrary}&mode=read_book}} {{renderer calibreHighlight, false, 2000, _, ${calibreLibrary}, ${calibre_item.application_id}, ${logseq.settings?.bookFormat}}}`);
+        await logseq.Editor.insertBlock(synopsisBlock.uuid, `[${calibre_item.title}](calibre://show-book/${calibreLibrary}/${calibre_item.application_id})  {{renderer calibreViewer, special, /#book_id=${calibre_item.application_id}&fmt=${logseq.settings?.bookFormat}&library_id=${calibreLibrary}&mode=read_book}} {{renderer calibreHighlight, false, 2000, _, ${calibreLibrary}, ${calibre_item.application_id}, ${logseq.settings?.bookFormat}}}`, { sibling: true });
     }
     else {
         const newPage = await logseq.Editor.createPage(page_title, {}, {
@@ -390,13 +390,13 @@ async function create(page_title, page_properties, calibre_item) {
         logseq.Editor.exitEditingMode();
 
 
+        // Append Synopsis first, then the calibre link/renderers block after it
         const synopsisBlock = await logseq.Editor.appendBlockInPage(newPage?.uuid, "[[Synopsis]]");
 
         await logseq.Editor.insertBlock(synopsisBlock.uuid, calibre_item?.comments? calibre_item?.comments : "");
 
-        // Append two MacroRenderers for View and Sync in calibre-annotation Plugin
         const calibreLibrary = logseq.settings?.calibreLibrary.replace(/ /g, '_');
-        await logseq.Editor.prependBlockInPage(newPage?.uuid, `[${calibre_item.title}](calibre://show-book/${calibreLibrary}/${calibre_item.application_id})  {{renderer calibreViewer, special, /#book_id=${calibre_item.application_id}&fmt=${logseq.settings?.bookFormat}&library_id=${calibreLibrary}&mode=read_book}} {{renderer calibreHighlight, false, 2000, _, ${calibreLibrary}, ${calibre_item.application_id}, ${logseq.settings?.bookFormat}}}`);
+        await logseq.Editor.insertBlock(synopsisBlock.uuid, `[${calibre_item.title}](calibre://show-book/${calibreLibrary}/${calibre_item.application_id})  {{renderer calibreViewer, special, /#book_id=${calibre_item.application_id}&fmt=${logseq.settings?.bookFormat}&library_id=${calibreLibrary}&mode=read_book}} {{renderer calibreHighlight, false, 2000, _, ${calibreLibrary}, ${calibre_item.application_id}, ${logseq.settings?.bookFormat}}}`, { sibling: true });
     }
 
 }
