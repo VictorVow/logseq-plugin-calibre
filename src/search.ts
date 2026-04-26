@@ -327,8 +327,27 @@ async function ensurePropertySchemas(properties: Record<string, any>) {
     const editor = logseq.Editor as any;
     if (typeof editor.upsertProperty !== 'function') return;
 
+    // Logseq stores plugin properties under the ident
+    // :plugin.property.<plugin-id>/<key>.  Calling upsertProperty on an entity
+    // that already carries this ident appends a duplicate block/updated-at
+    // datom (a Logseq bug), which corrupts the property entity and causes
+    // "DB write failed with invalid data" on the next upsertBlockProperty call.
+    // Guard against this by querying for the ident before calling upsertProperty.
+    const pluginId: string =
+        (logseq as any).baseInfo?.id ?? 'victor-logseq-calibre-annotation';
+    const db = (logseq as any).DB;
+    const canQuery = db && typeof db.datascriptQuery === 'function';
+
     for (const key of Object.keys(properties)) {
         try {
+            if (canQuery) {
+                const ident = `:plugin.property.${pluginId}/${key}`;
+                const existing = await db.datascriptQuery(
+                    `[:find ?e :where [?e :db/ident ${ident}]]`
+                );
+                if (Array.isArray(existing) && existing.length > 0) continue;
+            }
+
             const schema = key === 'calibre-tags'
                 ? { type: 'default', cardinality: 'many' }
                 : { type: 'default' };
