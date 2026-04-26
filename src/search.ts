@@ -357,7 +357,11 @@ async function create(page_title, page_properties, calibre_item) {
             await setBlockProperties(newPage.uuid, page_properties);
         }
 
-        logseq.Editor.insertAtEditingCursor(`[[${page_title}]]`);
+        // DB graphs don't support "/" in page references (namespace separator
+        // is a file-graph concept), so strip the namespace prefix
+        const refTitle = dbGraph ? page_title.replace(/^[^/]+\//, '') : page_title;
+        logseq.Editor.insertAtEditingCursor(`[[${refTitle}]]`);
+        
         logseq.Editor.exitEditingMode();
 
 
