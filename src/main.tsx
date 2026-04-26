@@ -69,7 +69,7 @@ const settings: SettingSchemaDesc[] = [
       title: "Page Properties",
       description: "Select the properties i.e metadata to be included. The default metadata is 'tags, isbn, date, publisher, language, authors, format'. ⚠ The rating property currently returns an error. ",
       type: "string",
-      default: "tags, isbn, date, publisher, language, authors, format"
+      default: "calibre-tags, isbn, date, publisher, language, authors, format"
   },
   {
       key: "bookFormat",

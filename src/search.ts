@@ -224,32 +224,33 @@ function createCalibrePage(item) {
     page_properties_keys.forEach((property) => {
         property = property.trim()
         switch (property) {
+            case "calibre-tags":
             case "tags":
-            property_value = calibre_item.tags;
+            property_value = calibre_item.tags?.join(', ');
             break;
 
             case "isbn":
-            property_value = calibre_item.identifiers.isbn;
+            property_value = calibre_item.identifiers?.isbn;
             break;
 
             case "date":
-            property_value = calibre_item.pubdate.substring(0, 4);
+            property_value = calibre_item.pubdate?.substring(0, 4);
             break;
 
             case "publisher":
             property_value = calibre_item.publisher;
             break;
-            
+
             case "languages":
-            property_value = calibre_item.languages;
+            property_value = calibre_item.languages?.join(', ');
             break;
 
             case "authors":
-            property_value = calibre_item.authors.map(author => `[[${author}]]`).join(', ');;
+            property_value = calibre_item.authors?.map(author => `[[${author}]]`).join(', ');
             break;
 
             case "format":
-            property_value = Object.entries(calibre_item.format_metadata)
+            property_value = Object.entries(calibre_item.format_metadata ?? {})
             .map(([ext, obj]) => `[${ext}](${obj?.path})`)
             .join(', ');
             break;
@@ -257,47 +258,68 @@ function createCalibrePage(item) {
             default:
             property_value = calibre_item[property];
         }
-        
-        page_properties[property] = property_value ? property_value : "NA";
+
+        // Remap "tags" to "calibre-tags" to avoid conflict with Logseq's
+        // built-in :block/tags attribute in DB graphs
+        let property_key = property === "tags" ? "calibre-tags" : property;
+        // Ensure property values are strings — Logseq DB graphs require it
+        if (property_value != null && typeof property_value !== 'string') {
+            property_value = Array.isArray(property_value) ? property_value.join(', ') : String(property_value);
+        }
+        page_properties[property_key] = property_value ? property_value : "NA";
         });
 
-        console.log("Create Page");
+        console.log("Create Page", JSON.stringify(page_properties));
         create(page_title, page_properties, calibre_item).then(() => {
     });
 
 }
 
 
+async function setBlockProperties(blockUuid: string, properties: Record<string, string>) {
+    for (const [key, value] of Object.entries(properties)) {
+        try {
+            await logseq.Editor.upsertBlockProperty(blockUuid, key, value);
+        } catch (err) {
+            console.error(`Failed to set property "${key}" = "${value}":`, err);
+        }
+    }
+}
+
 async function create(page_title, page_properties, calibre_item) {
 
     if (logseq.settings?.addBlockInstead) {
-        
+
         const currentBlock = await logseq.Editor.getCurrentBlock()
         const newBlock = await logseq.Editor.insertBlock(currentBlock.uuid, `${page_title}`, {
             before: true,
             focus: true,
             isPageBlock: true,
-            properties: page_properties,
         })
-        
-        // await logseq.Editor.insertAtEditingCursor(`${page_title}`);
-        // Object.entries(page_properties).forEach(([key, value]) => logseq.Editor.upsertBlockProperty(currentBlock.uuid, key, value))
+
+        if (newBlock) {
+            await setBlockProperties(newBlock.uuid, page_properties);
+        }
 
         const synopsisBlock = await logseq.Editor.insertBlock(newBlock.uuid, "[[Synopsis]]");
 
         await logseq.Editor.insertBlock(synopsisBlock.uuid, calibre_item?.comments? calibre_item?.comments : "");
-        
+
         const calibreLibrary = logseq.settings?.calibreLibrary.replace(/ /g, '_');
         // Append two MacroRenderers for View and Sync in calibre-annotation Plugin
         await logseq.Editor.insertBlock(newBlock.uuid, `[${calibre_item.title}](calibre://show-book/${calibreLibrary}/${calibre_item.application_id})  {{renderer calibreViewer, special, /#book_id=${calibre_item.application_id}&fmt=${logseq.settings?.bookFormat}&library_id=${calibreLibrary}&mode=read_book}} {{renderer calibreHighlight, false, 2000, _, ${calibreLibrary}, ${calibre_item.application_id}, ${logseq.settings?.bookFormat}}}`);
     }
     else {
-        const newPage = await logseq.Editor.createPage(page_title, page_properties, {
+        const newPage = await logseq.Editor.createPage(page_title, {}, {
             format: "markdown",
             redirect: false,
             journal: false,
             createFirstBlock: false
         });
+
+        if (newPage) {
+            await setBlockProperties(newPage.uuid, page_properties);
+        }
 
         logseq.Editor.insertAtEditingCursor(`[[${page_title}]]`);
         logseq.Editor.exitEditingMode();
