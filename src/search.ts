@@ -286,9 +286,13 @@ async function isDbGraph(): Promise<boolean> {
 }
 
 async function ensurePropertySchemas(properties: Record<string, string>) {
-    // DB graphs require property schemas to be defined before values can be set.
-    // upsertProperty is available at runtime in modern Logseq but not in the
-    // old SDK types, so we access it dynamically.
+    // DB graphs require property schemas to be pre-defined with the correct
+    // type before upsertBlockProperty can set values. Without this,
+    // upsertBlockProperty auto-infers :db.type/ref which causes datascript
+    // validation failures.
+    //
+    // upsertProperty/removeProperty are available at runtime in modern Logseq
+    // but not in the old SDK types (v0.0.14), so we access them dynamically.
     const editor = logseq.Editor as any;
     if (typeof editor.upsertProperty !== 'function') return;
 
