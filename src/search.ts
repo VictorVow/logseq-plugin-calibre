@@ -226,7 +226,7 @@ function createCalibrePage(item) {
         switch (property) {
             case "calibre-tags":
             case "tags":
-            property_value = calibre_item.tags?.join(', ');
+            property_value = calibre_item.tags ?? [];
             break;
 
             case "isbn":
@@ -262,8 +262,8 @@ function createCalibrePage(item) {
         // Remap "tags" to "calibre-tags" to avoid conflict with Logseq's
         // built-in :block/tags attribute in DB graphs
         let property_key = property === "tags" ? "calibre-tags" : property;
-        // Ensure property values are strings — Logseq DB graphs require it
-        if (property_value != null && typeof property_value !== 'string') {
+        // Ensure property values are strings (except calibre-tags which stays as array)
+        if (property_key !== 'calibre-tags' && property_value != null && typeof property_value !== 'string') {
             property_value = Array.isArray(property_value) ? property_value.join(', ') : String(property_value);
         }
         page_properties[property_key] = property_value ? property_value : "NA";
@@ -285,7 +285,7 @@ async function isDbGraph(): Promise<boolean> {
     }
 }
 
-async function ensurePropertySchemas(properties: Record<string, string>) {
+async function ensurePropertySchemas(properties: Record<string, any>) {
     // DB graphs require property schemas to be pre-defined with the correct
     // type before upsertBlockProperty can set values. Without this,
     // upsertBlockProperty auto-infers :db.type/ref which causes datascript
@@ -298,20 +298,55 @@ async function ensurePropertySchemas(properties: Record<string, string>) {
 
     for (const key of Object.keys(properties)) {
         try {
-            await editor.upsertProperty(key, { type: 'default' });
+            const schema = key === 'calibre-tags'
+                ? { type: 'default', cardinality: 'many' }
+                : { type: 'default' };
+            await editor.upsertProperty(key, schema);
         } catch (err) {
             console.error(`Failed to ensure property schema for "${key}":`, err);
         }
     }
 }
 
-async function setBlockProperties(blockUuid: string, properties: Record<string, string>) {
+async function setBlockProperties(blockUuid: string, properties: Record<string, any>) {
     for (const [key, value] of Object.entries(properties)) {
         try {
             await logseq.Editor.upsertBlockProperty(blockUuid, key, value);
         } catch (err) {
             console.error(`Failed to set property "${key}" = "${value}":`, err);
         }
+    }
+
+    // For calibre-tags, convert the value blocks into available choices
+    if (Array.isArray(properties['calibre-tags'])) {
+        try {
+            await addTagsAsChoices('calibre-tags');
+        } catch (err) {
+            console.error('Failed to add calibre-tags as available choices:', err);
+        }
+    }
+}
+
+async function addTagsAsChoices(propertyKey: string) {
+    const editor = logseq.Editor as any;
+    if (typeof editor.addPropertyValueChoices !== 'function') return;
+
+    // Find all value block UUIDs for this property
+    const propertyEntity = await editor.getProperty?.(propertyKey);
+    if (!propertyEntity?.uuid) return;
+
+    const results = await logseq.DB.datascriptQuery(`
+        [:find ?uuid
+         :where
+         [?e :logseq.property/created-from-property ?prop]
+         [?prop :block/uuid #uuid "${propertyEntity.uuid}"]
+         [?e :block/uuid ?uuid]
+         (not [?e :block/closed-value-property _])]
+    `);
+
+    if (results?.length > 0) {
+        const uuids = results.map(r => r[0]);
+        await editor.addPropertyValueChoices(propertyEntity.uuid, uuids);
     }
 }
 
