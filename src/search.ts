@@ -317,37 +317,10 @@ async function setBlockProperties(blockUuid: string, properties: Record<string, 
         }
     }
 
-    // For calibre-tags, convert the value blocks into available choices
-    if (Array.isArray(properties['calibre-tags'])) {
-        try {
-            await addTagsAsChoices('calibre-tags');
-        } catch (err) {
-            console.error('Failed to add calibre-tags as available choices:', err);
-        }
-    }
-}
-
-async function addTagsAsChoices(propertyKey: string) {
-    const editor = logseq.Editor as any;
-    if (typeof editor.addPropertyValueChoices !== 'function') return;
-
-    // Find all value block UUIDs for this property
-    const propertyEntity = await editor.getProperty?.(propertyKey);
-    if (!propertyEntity?.uuid) return;
-
-    const results = await logseq.DB.datascriptQuery(`
-        [:find ?uuid
-         :where
-         [?e :logseq.property/created-from-property ?prop]
-         [?prop :block/uuid #uuid "${propertyEntity.uuid}"]
-         [?e :block/uuid ?uuid]
-         (not [?e :block/closed-value-property _])]
-    `);
-
-    if (results?.length > 0) {
-        const uuids = results.map(r => r[0]);
-        await editor.addPropertyValueChoices(propertyEntity.uuid, uuids);
-    }
+    // NOTE: Logseq's addPropertyValueChoices API has a bug where it doesn't
+    // convert string UUIDs to CLJS UUID objects, so we can't programmatically
+    // set "Available choices" from a plugin. Tags are still stored as separate
+    // multi-values and will appear as autocomplete suggestions.
 }
 
 async function create(page_title, page_properties, calibre_item) {
