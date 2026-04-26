@@ -72,6 +72,13 @@ const settings: SettingSchemaDesc[] = [
       default: "calibre-tags, isbn, date, publisher, language, authors, format"
   },
   {
+      key: "pageTag",
+      title: "Page Tag",
+      description: "Define the tag which will be added to the page e.g. Book",
+      type: "string",
+      default: ""
+  },
+  {
       key: "bookFormat",
       title: "Preferred Book Format to Open",
       description: "Choose preferred book format for Viewer Macro and Sync Macro. The default is epub.",

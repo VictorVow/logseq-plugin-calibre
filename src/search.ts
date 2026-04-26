@@ -355,6 +355,23 @@ async function create(page_title, page_properties, calibre_item) {
 
         if (newPage) {
             await setBlockProperties(newPage.uuid, page_properties);
+
+            // Add tag to the page (DB graphs use createTag + addBlockTag)
+            const pageTag = logseq.settings?.pageTag?.trim();
+            if (pageTag && dbGraph) {
+                try {
+                    const editor = logseq.Editor as any;
+                    // Ensure the tag exists as a class first
+                    if (typeof editor.createTag === 'function') {
+                        try { await editor.createTag(pageTag); } catch { /* already exists */ }
+                    }
+                    if (typeof editor.addBlockTag === 'function') {
+                        await editor.addBlockTag(newPage.uuid, pageTag);
+                    }
+                } catch (err) {
+                    console.error(`Failed to add tag "${pageTag}":`, err);
+                }
+            }
         }
 
         // DB graphs don't support "/" in page references (namespace separator
