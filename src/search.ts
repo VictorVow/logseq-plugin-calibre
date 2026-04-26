@@ -246,7 +246,7 @@ function createCalibrePage(item) {
             break;
 
             case "authors":
-            property_value = calibre_item.authors?.map(author => `[[${author}]]`).join(', ');
+            property_value = calibre_item.authors?.join(', ');
             break;
 
             case "format":
