@@ -276,6 +276,31 @@ function createCalibrePage(item) {
 }
 
 
+async function isDbGraph(): Promise<boolean> {
+    try {
+        const graph = await logseq.App.getCurrentGraph();
+        return graph?.url?.startsWith('logseq_db_') ?? false;
+    } catch {
+        return false;
+    }
+}
+
+async function ensurePropertySchemas(properties: Record<string, string>) {
+    // DB graphs require property schemas to be defined before values can be set.
+    // upsertProperty is available at runtime in modern Logseq but not in the
+    // old SDK types, so we access it dynamically.
+    const editor = logseq.Editor as any;
+    if (typeof editor.upsertProperty !== 'function') return;
+
+    for (const key of Object.keys(properties)) {
+        try {
+            await editor.upsertProperty(key, { type: 'default' });
+        } catch (err) {
+            console.error(`Failed to ensure property schema for "${key}":`, err);
+        }
+    }
+}
+
 async function setBlockProperties(blockUuid: string, properties: Record<string, string>) {
     for (const [key, value] of Object.entries(properties)) {
         try {
@@ -287,6 +312,13 @@ async function setBlockProperties(blockUuid: string, properties: Record<string, 
 }
 
 async function create(page_title, page_properties, calibre_item) {
+    const dbGraph = await isDbGraph();
+
+    // DB graphs need property schemas pre-defined with the correct type
+    // before upsertBlockProperty can set values on them
+    if (dbGraph) {
+        await ensurePropertySchemas(page_properties);
+    }
 
     if (logseq.settings?.addBlockInstead) {
 
