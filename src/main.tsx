@@ -148,9 +148,13 @@ async function main() {
   // Slash Command
   logseq.Editor.registerSlashCommand("Calibre Annotation: Add a Calibre book", async () => {
     if (!logseq.settings?.calibreLibrary) {
-        logseq.UI.showMsg("calibreAnnotate: SET CALIBRE LIBRARY", "warning") 
+        logseq.UI.showMsg("calibreAnnotate: SET CALIBRE LIBRARY", "warning")
         return
     }
+
+    // Capture the block being edited now, before the search UI steals focus
+    const currentBlock = await logseq.Editor.getCurrentBlock();
+    SearchMethods.setSourceBlockUuid(currentBlock?.uuid ?? null);
 
     logseq.provideStyle({
       style: `

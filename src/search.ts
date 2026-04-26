@@ -3,6 +3,14 @@ import Fuse from "fuse.js";
 import DigestClient from "digest-fetch";
 
 
+// Stores the block UUID that was active when the slash command was invoked,
+// so create() can insert the page reference even after editing mode is lost.
+let _sourceBlockUuid: string | null = null;
+
+export function setSourceBlockUuid(uuid: string | null) {
+    _sourceBlockUuid = uuid;
+}
+
 export async function getCalibreItems(): Promise<CalibreItem[]> {
     const calibreLibrary = logseq.settings?.calibreLibrary.replace(/ /g, '_');
     let fetch_link = `${logseq.settings?.serverLink}/ajax/books/${calibreLibrary}`;
@@ -385,8 +393,18 @@ async function create(page_title, page_properties, calibre_item) {
         // DB graphs don't support "/" in page references (namespace separator
         // is a file-graph concept), so strip the namespace prefix
         const refTitle = dbGraph ? page_title.replace(/^[^/]+\//, '') : page_title;
-        logseq.Editor.insertAtEditingCursor(`[[${refTitle}]]`);
-        
+
+        // Insert the page reference into the source block. We saved the block
+        // UUID when the slash command fired because the editing cursor is lost
+        // once the search UI opens.
+        if (_sourceBlockUuid) {
+            const srcBlock = await logseq.Editor.getBlock(_sourceBlockUuid);
+            if (srcBlock) {
+                const content = srcBlock.content ?? '';
+                await logseq.Editor.updateBlock(_sourceBlockUuid, `${content}[[${refTitle}]]`);
+            }
+            _sourceBlockUuid = null;
+        }
         logseq.Editor.exitEditingMode();
 
 
