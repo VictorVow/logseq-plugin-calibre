@@ -11,6 +11,84 @@ export function setSourceBlockUuid(uuid: string | null) {
     _sourceBlockUuid = uuid;
 }
 
+export async function getCalibreBook(libraryId: string, bookId: string): Promise<CalibreItem | null> {
+    let fetch_link = `${logseq.settings?.serverLink}/ajax/book/${bookId}/${libraryId}`;
+    fetch_link = fetch_link.replace(/([^:]\/)\/+/g, '$1');
+
+    const client = new DigestClient(logseq.settings?.username, logseq.settings?.password);
+
+    try {
+        const response = await client.fetch(fetch_link, {
+            method: 'GET',
+            headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        });
+
+        if (!response.ok) {
+            console.error(`Failed to fetch book ${bookId} from ${libraryId}: ${response.status}`);
+            return null;
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error(`Unable to fetch book ${bookId}:`, error);
+        return null;
+    }
+}
+
+export function buildPageProperties(calibre_item: CalibreItem): Record<string, any> {
+    const page_properties_keys = (logseq.settings?.pageProperties as string)?.split(",") ?? [];
+    const page_properties: Record<string, any> = {};
+
+    page_properties_keys.forEach((property) => {
+        property = property.trim();
+        let property_value: any;
+
+        switch (property) {
+            case "calibre-tags":
+            case "tags":
+            property_value = calibre_item.tags ?? [];
+            break;
+
+            case "isbn":
+            property_value = calibre_item.identifiers?.isbn;
+            break;
+
+            case "date":
+            property_value = calibre_item.pubdate?.substring(0, 4);
+            break;
+
+            case "publisher":
+            property_value = calibre_item.publisher;
+            break;
+
+            case "languages":
+            property_value = calibre_item.languages?.join(', ');
+            break;
+
+            case "authors":
+            property_value = calibre_item.authors?.join(', ');
+            break;
+
+            case "format":
+            property_value = Object.entries(calibre_item.format_metadata ?? {})
+            .map(([ext, obj]) => `[${ext}](${obj?.path})`)
+            .join(', ');
+            break;
+
+            default:
+            property_value = calibre_item[property];
+        }
+
+        let property_key = property === "tags" ? "calibre-tags" : property;
+        if (property_key !== 'calibre-tags' && property_value != null && typeof property_value !== 'string') {
+            property_value = Array.isArray(property_value) ? property_value.join(', ') : String(property_value);
+        }
+        page_properties[property_key] = property_value ? property_value : "NA";
+    });
+
+    return page_properties;
+}
+
 export async function getCalibreItems(): Promise<CalibreItem[]> {
     const calibreLibrary = logseq.settings?.calibreLibrary.replace(/ /g, '_');
     let fetch_link = `${logseq.settings?.serverLink}/ajax/books/${calibreLibrary}`;
@@ -220,65 +298,10 @@ function createCalibrePage(item) {
         }
     });
 
-    let property_value;
-    let page_properties_keys = logseq.settings?.pageProperties.split(",");
-    let page_properties = {};
+    let page_properties = buildPageProperties(calibre_item);
 
-    // // Add Everything 
-    // for (let [key, value] of Object.entries(calibre_item)) {
-    //     (value) ? page_properties[key] = `"${value}"` : page_properties[key] = "NA";
-    // }
-    
-    page_properties_keys.forEach((property) => {
-        property = property.trim()
-        switch (property) {
-            case "calibre-tags":
-            case "tags":
-            property_value = calibre_item.tags ?? [];
-            break;
-
-            case "isbn":
-            property_value = calibre_item.identifiers?.isbn;
-            break;
-
-            case "date":
-            property_value = calibre_item.pubdate?.substring(0, 4);
-            break;
-
-            case "publisher":
-            property_value = calibre_item.publisher;
-            break;
-
-            case "languages":
-            property_value = calibre_item.languages?.join(', ');
-            break;
-
-            case "authors":
-            property_value = calibre_item.authors?.join(', ');
-            break;
-
-            case "format":
-            property_value = Object.entries(calibre_item.format_metadata ?? {})
-            .map(([ext, obj]) => `[${ext}](${obj?.path})`)
-            .join(', ');
-            break;
-
-            default:
-            property_value = calibre_item[property];
-        }
-
-        // Remap "tags" to "calibre-tags" to avoid conflict with Logseq's
-        // built-in :block/tags attribute in DB graphs
-        let property_key = property === "tags" ? "calibre-tags" : property;
-        // Ensure property values are strings (except calibre-tags which stays as array)
-        if (property_key !== 'calibre-tags' && property_value != null && typeof property_value !== 'string') {
-            property_value = Array.isArray(property_value) ? property_value.join(', ') : String(property_value);
-        }
-        page_properties[property_key] = property_value ? property_value : "NA";
-        });
-
-        console.log("Create Page", JSON.stringify(page_properties));
-        create(page_title, page_properties, calibre_item).then(() => {
+    console.log("Create Page", JSON.stringify(page_properties));
+    create(page_title, page_properties, calibre_item).then(() => {
     });
 
 }
@@ -316,9 +339,11 @@ async function ensurePropertySchemas(properties: Record<string, any>) {
     }
 }
 
-async function setBlockProperties(blockUuid: string, properties: Record<string, any>) {
+export async function setBlockProperties(blockUuid: string, properties: Record<string, any>) {
     for (const [key, value] of Object.entries(properties)) {
         try {
+            // Remove first to avoid duplicates on multi-value properties like calibre-tags
+            await logseq.Editor.removeBlockProperty(blockUuid, key);
             await logseq.Editor.upsertBlockProperty(blockUuid, key, value);
         } catch (err) {
             console.error(`Failed to set property "${key}" = "${value}":`, err);
@@ -359,7 +384,7 @@ async function create(page_title, page_properties, calibre_item) {
         await logseq.Editor.insertBlock(synopsisBlock.uuid, calibre_item?.comments? calibre_item?.comments : "");
 
         const calibreLibrary = logseq.settings?.calibreLibrary.replace(/ /g, '_');
-        await logseq.Editor.insertBlock(synopsisBlock.uuid, `[${calibre_item.title}](calibre://show-book/${calibreLibrary}/${calibre_item.application_id})  {{renderer calibreViewer, special, /#book_id=${calibre_item.application_id}&fmt=${logseq.settings?.bookFormat}&library_id=${calibreLibrary}&mode=read_book}} {{renderer calibreHighlight, false, 2000, _, ${calibreLibrary}, ${calibre_item.application_id}, ${logseq.settings?.bookFormat}}}`, { sibling: true });
+        await logseq.Editor.insertBlock(synopsisBlock.uuid, `[${calibre_item.title}](calibre://show-book/${calibreLibrary}/${calibre_item.application_id})  {{renderer calibreMetadata, ${calibreLibrary}, ${calibre_item.application_id}}} {{renderer calibreViewer, special, /#book_id=${calibre_item.application_id}&fmt=${logseq.settings?.bookFormat}&library_id=${calibreLibrary}&mode=read_book}} {{renderer calibreHighlight, false, 2000, _, ${calibreLibrary}, ${calibre_item.application_id}, ${logseq.settings?.bookFormat}}}`, { sibling: true });
     }
     else {
         const newPage = await logseq.Editor.createPage(page_title, {}, {
@@ -414,7 +439,7 @@ async function create(page_title, page_properties, calibre_item) {
         await logseq.Editor.insertBlock(synopsisBlock.uuid, calibre_item?.comments? calibre_item?.comments : "");
 
         const calibreLibrary = logseq.settings?.calibreLibrary.replace(/ /g, '_');
-        await logseq.Editor.insertBlock(synopsisBlock.uuid, `[${calibre_item.title}](calibre://show-book/${calibreLibrary}/${calibre_item.application_id})  {{renderer calibreViewer, special, /#book_id=${calibre_item.application_id}&fmt=${logseq.settings?.bookFormat}&library_id=${calibreLibrary}&mode=read_book}} {{renderer calibreHighlight, false, 2000, _, ${calibreLibrary}, ${calibre_item.application_id}, ${logseq.settings?.bookFormat}}}`, { sibling: true });
+        await logseq.Editor.insertBlock(synopsisBlock.uuid, `[${calibre_item.title}](calibre://show-book/${calibreLibrary}/${calibre_item.application_id})  {{renderer calibreMetadata, ${calibreLibrary}, ${calibre_item.application_id}}} {{renderer calibreViewer, special, /#book_id=${calibre_item.application_id}&fmt=${logseq.settings?.bookFormat}&library_id=${calibreLibrary}&mode=read_book}} {{renderer calibreHighlight, false, 2000, _, ${calibreLibrary}, ${calibre_item.application_id}, ${logseq.settings?.bookFormat}}}`, { sibling: true });
     }
 
 }

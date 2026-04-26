@@ -326,6 +326,60 @@ async function main() {
     },
   });
 
+  // MacroRenderer and Model for Metadata Sync Component //
+
+  logseq.App.onMacroRendererSlotted(({ slot, payload }) => {
+    const [type, lib, id] = payload.arguments;
+    if (type == "calibreMetadata") {
+      return logseq.provideUI({
+        key: type + payload.uuid,
+        slot,
+        template: `<button
+          data-on-click="syncMetadata"
+          data-library-id="${lib}"
+          data-book-id="${id}"
+          data-slot-id="${slot}"
+          data-block-uuid="${payload.uuid}"
+          class="ui__button text-center px-1 py-0"
+          title="Sync metadata"
+          ><svg xmlns="http://www.w3.org/2000/svg" width="1.8em" height="1.8em" viewBox="0 0 24 24" fill="none" stroke="var(--ls-primary-text-color)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icon-tabler-cloud-download"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M19 18a3.5 3.5 0 0 0 0 -7h-1a5 4.5 0 0 0 -11 -1h-1a3.5 3.5 0 0 0 -1 6.5" /><path d="M12 13l0 9" /><path d="M9 19l3 3l3 -3" /></svg></button>`,
+      });
+    }
+  });
+
+  logseq.provideModel({
+    async syncMetadata(e: any) {
+      const lib = e.dataset.libraryId?.trim();
+      const id = e.dataset.bookId?.trim();
+      const blockUuid = e.dataset.blockUuid;
+
+      if (!lib || !id) {
+        logseq.UI.showMsg("calibreMetadata: missing library or book ID", "error");
+        return;
+      }
+
+      const book = await SearchMethods.getCalibreBook(lib, id);
+      if (!book) {
+        logseq.UI.showMsg("Failed to fetch book metadata from Calibre", "error");
+        return;
+      }
+
+      const properties = SearchMethods.buildPageProperties(book);
+
+      // The renderer block lives on the page whose properties we want to update.
+      // Page properties are stored on the page entity itself, so use page.uuid.
+      const block = await logseq.Editor.getBlock(blockUuid);
+      if (!block) return;
+
+      const page = await logseq.Editor.getPage(block.page.id);
+      if (!page) return;
+
+      await SearchMethods.setBlockProperties(page.uuid, properties);
+
+      logseq.UI.showMsg("Metadata synced from Calibre", "success");
+    },
+  });
+
 };
 
 // Methods for Syncing Annotations from Calibre to Logseq // 
