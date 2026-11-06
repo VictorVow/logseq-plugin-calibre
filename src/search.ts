@@ -61,6 +61,7 @@ export function buildPageProperties(calibre_item: CalibreItem): Record<string, a
             property_value = calibre_item.publisher;
             break;
 
+            case "language":
             case "languages":
             property_value = calibre_item.languages?.join(', ');
             break;
@@ -279,7 +280,7 @@ function createCalibrePage(item) {
     const calibre_item = item;
 
     let page_title = logseq.settings?.pageTitleTemplate;
-    let page_title_variables = page_title.match(/({{[\s\S]*?}})/gm);
+    let page_title_variables = page_title.match(/({{[\s\S]*?}})/gm) ?? [];
 
     page_title_variables.forEach(page_title_var => {
         switch (page_title_var) {
@@ -338,19 +339,37 @@ async function ensurePropertySchemas(properties: Record<string, any>) {
     const db = (logseq as any).DB;
     const canQuery = db && typeof db.datascriptQuery === 'function';
 
+    const norm = (v: any) => String(v ?? '').replace(/^:/, '');
+
     for (const key of Object.keys(properties)) {
         try {
+            // Single-value props store plain text inline. calibre-tags is :node
+            // so each tag becomes a real clickable page instead of an orphanable
+            // :default value-node entity.
+            const schema = key === 'calibre-tags'
+                ? { type: 'node', cardinality: 'many' }
+                : { type: 'string' };
+
             if (canQuery) {
                 const ident = `:plugin.property.${pluginId}/${key}`;
                 const existing = await db.datascriptQuery(
-                    `[:find ?e :where [?e :db/ident ${ident}]]`
+                    `[:find ?t ?c :where [?e :db/ident ${ident}] [?e :logseq.property/type ?t] [?e :db/cardinality ?c]]`
                 );
-                if (Array.isArray(existing) && existing.length > 0) continue;
+                if (Array.isArray(existing) && existing.length > 0) {
+                    const [type, card] = existing[0];
+                    const matches = norm(type) === schema.type &&
+                        (!schema.cardinality || norm(card) === 'db.cardinality/many');
+                    if (matches) continue;
+                    // upsertProperty corrupts existing entities (duplicate
+                    // block/updated-at datom bug); property type can't be
+                    // changed in place anyway.
+                    console.warn(
+                        `Property "${key}" exists with type "${norm(type)}", ` +
+                        `wanted "${schema.type}". Values will be written under the existing schema.`);
+                    continue;
+                }
             }
 
-            const schema = key === 'calibre-tags'
-                ? { type: 'default', cardinality: 'many' }
-                : { type: 'default' };
             await editor.upsertProperty(key, schema);
         } catch (err) {
             console.error(`Failed to ensure property schema for "${key}":`, err);
@@ -359,11 +378,16 @@ async function ensurePropertySchemas(properties: Record<string, any>) {
 }
 
 export async function setBlockProperties(blockUuid: string, properties: Record<string, any>) {
+    if (await isDbGraph()) {
+        await ensurePropertySchemas(properties);
+    }
     for (const [key, value] of Object.entries(properties)) {
         try {
-            // Remove first to avoid duplicates on multi-value properties like calibre-tags
-            await logseq.Editor.removeBlockProperty(blockUuid, key);
-            await logseq.Editor.upsertBlockProperty(blockUuid, key, value);
+            // No removeBlockProperty first: on DB graphs it orphans the ref'd
+            // value entities. upsertBlockProperty replaces single values, and
+            // {reset: true} replaces all values of many-cardinality properties.
+            const opts = key === 'calibre-tags' ? { reset: true } : undefined;
+            await (logseq.Editor as any).upsertBlockProperty(blockUuid, key, value, opts);
         } catch (err) {
             console.error(`Failed to set property "${key}" = "${value}":`, err);
         }
@@ -377,12 +401,6 @@ export async function setBlockProperties(blockUuid: string, properties: Record<s
 
 async function create(page_title, page_properties, calibre_item) {
     const dbGraph = await isDbGraph();
-
-    // DB graphs need property schemas pre-defined with the correct type
-    // before upsertBlockProperty can set values on them
-    if (dbGraph) {
-        await ensurePropertySchemas(page_properties);
-    }
 
     if (logseq.settings?.addBlockInstead) {
 

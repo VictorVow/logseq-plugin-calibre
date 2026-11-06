@@ -445,7 +445,10 @@ async function fetchUpdate(blockUuid, hostLink, bookId) {
 
   if (filtered_annotations.length > 0) {
     const updatedlastTimestamp = filtered_annotations[filtered_annotations.length - 1].timestamp;
-    await logseq.Editor.upsertBlockProperty(blockUuid, "lastsync", updatedlastTimestamp);
+    // Route through setBlockProperties so the lastsync property gets a :string
+    // schema on DB graphs; a Date value would otherwise be auto-created as a
+    // :default ref entity.
+    await SearchMethods.setBlockProperties(blockUuid, { lastsync: updatedlastTimestamp.toISOString() });
     logseq.Editor.exitEditingMode();
   }
 }
