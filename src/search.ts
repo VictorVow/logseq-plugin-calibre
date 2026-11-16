@@ -11,21 +11,22 @@ export function setSourceBlockUuid(uuid: string | null) {
     _sourceBlockUuid = uuid;
 }
 
-// Fetch through DigestClient, retrying with HTTP Basic when the server offers
-// only a Basic challenge (calibre can be configured for either; digest-fetch
-// can't do Basic unless constructed with {basic: true}).
+// Fetch with the credentials from settings, trying HTTP Basic first and
+// falling back to Digest. Order matters: a DigestClient hitting a Basic-only
+// challenge burns its one retry on a malformed header (calibre replies 400)
+// and never lets us see the original 401. Each attempt gets a fresh options
+// object because addAuth/addBasicAuth mutate options.headers.
 export async function calibreFetch(url: string, options: any = {}): Promise<Response> {
     const username = logseq.settings?.username;
     const password = logseq.settings?.password;
-    const client = new DigestClient(username, password);
+    const freshOptions = () => ({ ...options, headers: { ...(options.headers ?? {}) } });
 
-    const response = await client.fetch(url, options);
-    if (response.status === 401 &&
-        /^Basic/i.test(response.headers.get('www-authenticate') ?? '')) {
-        const basicClient = new DigestClient(username, password, { basic: true });
-        return basicClient.fetch(url, options);
+    if (username) {
+        const basic = await new DigestClient(username, password, { basic: true })
+            .fetch(url, freshOptions());
+        if (basic.status !== 401) return basic;
     }
-    return response;
+    return new DigestClient(username, password).fetch(url, freshOptions());
 }
 
 export async function getCalibreBook(libraryId: string, bookId: string): Promise<CalibreItem | null> {
