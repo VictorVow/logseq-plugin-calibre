@@ -1,7 +1,6 @@
 import '@logseq/libs'
 import React from 'react'
 import ReactDOM from 'react-dom'
-import DigestClient from "digest-fetch";
 import Viewer from './Viewer'
 import SearchBar from './SearchBar'
 import * as SearchMethods from './search';
@@ -420,9 +419,7 @@ async function fetchUpdate(blockUuid, hostLink, bookId) {
     
   console.log(hostLink + "/book-get-annotations/" + bookId);
 
-  const client = new DigestClient(logseq.settings?.username, logseq.settings?.password);
-
-  const response = await client.fetch(hostLink + "/book-get-annotations/" + bookId);
+  const response = await SearchMethods.calibreFetch(hostLink + "/book-get-annotations/" + bookId);
   const data = await response.json();
   
   const annotations = Object.values(data)[0].annotations_map.highlight;

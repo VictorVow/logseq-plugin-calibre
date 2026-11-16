@@ -11,14 +11,29 @@ export function setSourceBlockUuid(uuid: string | null) {
     _sourceBlockUuid = uuid;
 }
 
+// Fetch through DigestClient, retrying with HTTP Basic when the server offers
+// only a Basic challenge (calibre can be configured for either; digest-fetch
+// can't do Basic unless constructed with {basic: true}).
+export async function calibreFetch(url: string, options: any = {}): Promise<Response> {
+    const username = logseq.settings?.username;
+    const password = logseq.settings?.password;
+    const client = new DigestClient(username, password);
+
+    const response = await client.fetch(url, options);
+    if (response.status === 401 &&
+        /^Basic/i.test(response.headers.get('www-authenticate') ?? '')) {
+        const basicClient = new DigestClient(username, password, { basic: true });
+        return basicClient.fetch(url, options);
+    }
+    return response;
+}
+
 export async function getCalibreBook(libraryId: string, bookId: string): Promise<CalibreItem | null> {
     let fetch_link = `${logseq.settings?.serverLink}/ajax/book/${bookId}/${libraryId}`;
     fetch_link = fetch_link.replace(/([^:]\/)\/+/g, '$1');
 
-    const client = new DigestClient(logseq.settings?.username, logseq.settings?.password);
-
     try {
-        const response = await client.fetch(fetch_link, {
+        const response = await calibreFetch(fetch_link, {
             method: 'GET',
             headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
         });
@@ -99,10 +114,8 @@ export async function getCalibreItems(): Promise<CalibreItem[]> {
 
     console.log(fetch_link);
 
-    const client = new DigestClient(logseq.settings?.username, logseq.settings?.password);
-
     try {
-        const response = await client.fetch(fetch_link, {
+        const response = await calibreFetch(fetch_link, {
             method: 'GET',
             headers: {
                 'Cache-Control': 'no-cache', // Prevent caching
